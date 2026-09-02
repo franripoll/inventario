@@ -213,7 +213,7 @@
 
 <nav>
   <button data-tab="buscar" class="active"><div class="nav-ic">⌕</div>Buscar</button>
-  <button data-tab="zonas"><div class="nav-ic">▦</div>Zonas</button>
+  <button data-tab="zonas"><div class="nav-ic">▦</div>Ubicaciones</button>
   <button data-tab="actividad"><div class="nav-ic">◷</div>Actividad</button>
   <button data-tab="resumen"><div class="nav-ic">▤</div>Resumen</button>
 </nav>
@@ -732,14 +732,14 @@ function renderZonas(){
       </div>`;
     }).join('');
     document.getElementById('main').innerHTML = `
-      <div class="back-row" onclick="currentZone=null; render();">‹ Todas las zonas</div>
+      <div class="back-row" onclick="currentZone=null; render();">‹ Todas las ubicaciones</div>
       <div class="loc-list">${rows}</div>
-      <button class="loc-add-new" onclick="promptNewUbicacion('${escapeHtml(currentZone)}')">+ Nueva ubicación en zona ${escapeHtml(currentZone)}</button>`;
+      <button class="loc-add-new" onclick="promptNewUbicacion('${escapeHtml(currentZone)}')">+ Nueva ubicación en ${escapeHtml(currentZone)}</button>`;
   } else {
     const items = visibleArticulos().filter(a => a.ubicacion_cod === currentUbicacion);
     const locExtras = extras.filter(e => e.ubicacion_cod === currentUbicacion);
     document.getElementById('main').innerHTML = `
-      <div class="back-row" onclick="currentUbicacion=null; render();">‹ Ubicaciones de zona ${escapeHtml(currentZone)}</div>
+      <div class="back-row" onclick="currentUbicacion=null; render();">‹ ${escapeHtml(currentZone)}</div>
       ${renderLocationGroups(items, locExtras)}`;
   }
 }
