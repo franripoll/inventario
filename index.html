@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0F1117">
+<title>Inventario Patio · Cerámica Mayor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#0F1117;
+    --surface:#161B22;
+    --surface-2:#1C2229;
+    --border:#21262D;
+    --accent:#58A6FF;
+    --accent-dim:#1F3A5C;
+    --alert:#F0883E;
+    --alert-dim:#4A2E17;
+    --danger:#F85149;
+    --danger-dim:#4A1E1B;
+    --success:#3FB950;
+    --success-dim:#153A1E;
+    --text:#CDD9E5;
+    --text-secondary:#8B949E;
+    --radius:10px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,sans-serif; height:100%; overscroll-behavior-y:none;}
+  body{display:flex; flex-direction:column; min-height:100vh;}
+  code, .mono, .cod{font-family:'JetBrains Mono',monospace;}
+  button{font-family:inherit;}
+  input{font-family:inherit;}
+
+  /* HEADER */
+  header{padding:14px 16px 10px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:20;}
+  .header-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .app-title{font-size:16px; font-weight:600; letter-spacing:-.01em;}
+  .app-title span{color:var(--text-secondary); font-weight:400;}
+  .user-chip{display:flex; align-items:center; gap:6px; background:var(--surface-2); border:1px solid var(--border); border-radius:20px; padding:5px 10px 5px 8px; font-size:13px; color:var(--text); cursor:pointer;}
+  .user-dot{width:7px; height:7px; border-radius:50%; background:var(--accent);}
+  .progress-track{height:6px; border-radius:4px; background:var(--surface-2); overflow:hidden;}
+  .progress-fill{height:100%; background:var(--accent); border-radius:4px; transition:width .3s ease;}
+  .progress-label{display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); margin-top:6px;}
+
+  /* MAIN */
+  main{flex:1; padding:14px 16px 90px; overflow-y:auto;}
+  .search-box{display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:14px;}
+  .search-box input{flex:1; background:none; border:none; outline:none; color:var(--text); font-size:15px;}
+  .search-box input::placeholder{color:var(--text-secondary);}
+  .search-hint{font-size:13px; color:var(--text-secondary); margin:-6px 0 14px 2px;}
+
+  .zone-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
+  .zone-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 6px; text-align:center; cursor:pointer;}
+  .zone-card .z-letter{font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:600;}
+  .zone-card .z-count{font-size:11px; color:var(--text-secondary); margin-top:3px;}
+  .zone-card .z-pend{font-size:11px; color:var(--alert); margin-top:1px;}
+  .zone-card.done{opacity:.55;}
+
+  .back-row{display:flex; align-items:center; gap:8px; margin-bottom:14px; cursor:pointer; color:var(--accent); font-size:14px;}
+
+  .loc-group{margin-bottom:18px;}
+  .loc-head{display:flex; justify-content:space-between; align-items:center; padding:6px 2px; border-bottom:1px solid var(--border); margin-bottom:8px;}
+  .loc-code{font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; color:var(--accent);}
+  .loc-add{font-size:12px; color:var(--text-secondary); border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; background:none;}
+
+  .item-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:8px;}
+  .item-top{display:flex; justify-content:space-between; gap:10px;}
+  .item-name{font-size:14px; font-weight:500; line-height:1.35;}
+  .item-meta{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-secondary); margin-top:4px; line-height:1.5;}
+  .item-qty{font-size:13px; color:var(--text-secondary); white-space:nowrap; text-align:right;}
+  .item-qty b{color:var(--text); font-size:15px;}
+
+  .badge{display:inline-block; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:500; margin-top:8px;}
+  .badge.pendiente{background:var(--surface-2); color:var(--text-secondary);}
+  .badge.ok{background:var(--success-dim); color:var(--success);}
+  .badge.discrepancia{background:var(--alert-dim); color:var(--alert);}
+  .badge.no_encontrado{background:var(--danger-dim); color:var(--danger);}
+
+  .item-actions{display:flex; gap:6px; margin-top:10px;}
+  .act-btn{flex:1; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:12.5px; padding:8px 4px; border-radius:8px; cursor:pointer; text-align:center;}
+  .act-btn.ok-btn:active{background:var(--success-dim); border-color:var(--success);}
+  .act-btn.disc-btn:active{background:var(--alert-dim); border-color:var(--alert);}
+  .act-btn.miss-btn:active{background:var(--danger-dim); border-color:var(--danger);}
+  .act-btn.undo-btn{flex:0 0 40px; color:var(--text-secondary);}
+
+  .qty-input-row{display:flex; gap:6px; margin-top:10px;}
+  .qty-input-row input{flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-size:14px; outline:none;}
+  .qty-input-row button{border:none; border-radius:8px; padding:0 14px; font-size:13px; font-weight:500; cursor:pointer;}
+  .qty-save{background:var(--accent); color:#0B1420;}
+  .qty-cancel{background:var(--surface-2); color:var(--text-secondary); border:1px solid var(--border) !important;}
+
+  .empty-state{text-align:center; color:var(--text-secondary); font-size:13.5px; padding:40px 20px; line-height:1.6;}
+
+  /* ACTIVIDAD */
+  .feed-item{display:flex; gap:10px; padding:10px 2px; border-bottom:1px solid var(--border);}
+  .feed-dot{width:8px; height:8px; border-radius:50%; margin-top:5px; flex-shrink:0;}
+  .feed-dot.ok{background:var(--success);}
+  .feed-dot.discrepancia{background:var(--alert);}
+  .feed-dot.no_encontrado{background:var(--danger);}
+  .feed-dot.extra{background:var(--accent);}
+  .feed-text{font-size:13.5px; line-height:1.4;}
+  .feed-text b{font-weight:600;}
+  .feed-text .cod{color:var(--accent);}
+  .feed-time{font-size:11.5px; color:var(--text-secondary); margin-top:2px;}
+
+  /* RESUMEN */
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:20px;}
+  .stat-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px;}
+  .stat-num{font-size:22px; font-weight:600;}
+  .stat-label{font-size:12px; color:var(--text-secondary); margin-top:2px;}
+  .stat-card.ok .stat-num{color:var(--success);}
+  .stat-card.discrepancia .stat-num{color:var(--alert);}
+  .stat-card.no_encontrado .stat-num{color:var(--danger);}
+
+  .section-title{font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin:22px 0 10px; font-weight:600;}
+  .export-btn{display:block; width:100%; background:var(--accent); color:#0B1420; border:none; border-radius:var(--radius); padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; margin-top:20px;}
+
+  /* NAV */
+  nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--surface); border-top:1px solid var(--border); z-index:20; padding-bottom:env(safe-area-inset-bottom);}
+  nav button{flex:1; background:none; border:none; color:var(--text-secondary); font-size:11.5px; padding:10px 0 8px; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer;}
+  nav button.active{color:var(--accent);}
+  nav .nav-ic{width:20px; height:20px; display:flex; align-items:center; justify-content:center;}
+
+  /* MODAL */
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-end; justify-content:center; z-index:100;}
+  .modal-sheet{background:var(--surface); border-radius:16px 16px 0 0; padding:20px; width:100%; max-width:480px;}
+  .modal-sheet h3{margin:0 0 14px; font-size:16px; font-weight:600;}
+  .modal-sheet label{font-size:12.5px; color:var(--text-secondary); display:block; margin:12px 0 5px;}
+  .modal-sheet input{width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-size:14.5px; outline:none;}
+  .modal-actions{display:flex; gap:8px; margin-top:18px;}
+  .modal-actions button{flex:1; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:500; cursor:pointer;}
+  .modal-primary{background:var(--accent); color:#0B1420;}
+  .modal-secondary{background:var(--surface-2); color:var(--text-secondary); border:1px solid var(--border) !important;}
+
+  .toast{position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:13px; padding:10px 16px; border-radius:20px; z-index:200; opacity:0; transition:opacity .25s;}
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div class="app-title">Inventario <span>· Patio Cerámica Mayor</span></div>
+    <div class="user-chip" id="userChip"><span class="user-dot"></span><span id="userChipName">—</span></div>
+  </div>
+  <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="progress-label"><span id="progressText">0 / 0 revisados</span><span id="progressPct">0%</span></div>
+</header>
+
+<main id="main"></main>
+
+<nav>
+  <button data-tab="buscar" class="active"><div class="nav-ic">⌕</div>Buscar</button>
+  <button data-tab="zonas"><div class="nav-ic">▦</div>Zonas</button>
+  <button data-tab="actividad"><div class="nav-ic">◷</div>Actividad</button>
+  <button data-tab="resumen"><div class="nav-ic">▤</div>Resumen</button>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ============================================================
+// CONFIGURACIÓN — rellena esto con los datos de tu proyecto Supabase
+// ============================================================
+const SUPABASE_URL = 'https://bqakvkycikxwjibalxjj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxYWt2a3ljaWt4d2ppYmFseGpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDE4MTAsImV4cCI6MjEwMzkxNzgxMH0.e05GNkDELUhZFhbTrPFXX81o08MsgJoRLHcfV1QQXNw';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ============================================================
+// ESTADO
+// ============================================================
+let articulos = [];              // snapshot del excel
+let conteos = new Map();         // articulo_id -> {estado, cantidad_real, contado_por, contado_en, notas}
+let extras = [];                 // material encontrado no listado
+let activity = [];               // feed de actividad en memoria
+let currentTab = 'buscar';
+let currentZone = null;
+let userName = localStorage.getItem('inv_user_name') || '';
+let expandedId = null;
+let discInputId = null;
+
+const ESTADOS = ['pendiente','ok','discrepancia','no_encontrado'];
+
+// ============================================================
+// UTILIDADES
+// ============================================================
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function zoneOf(code){
+  const m = String(code || '').match(/^[A-Za-z]+/);
+  return m ? m[0].toUpperCase() : '???';
+}
+function getConteo(id){
+  return conteos.get(id) || {estado:'pendiente', cantidad_real:null, contado_por:null, contado_en:null};
+}
+function relTime(iso){
+  if(!iso) return '';
+  const diff = (Date.now() - new Date(iso).getTime())/1000;
+  if(diff < 60) return 'ahora mismo';
+  if(diff < 3600) return `hace ${Math.floor(diff/60)} min`;
+  if(diff < 86400) return `hace ${Math.floor(diff/3600)} h`;
+  return `hace ${Math.floor(diff/86400)} d`;
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+// ============================================================
+// CARGA DE DATOS
+// ============================================================
+async function fetchAllArticulos(){
+  let all = [];
+  let from = 0;
+  const pageSize = 1000;
+  while(true){
+    const {data, error} = await sb.from('inventario_articulos')
+      .select('id,ubicacion_cod,articulo,articulo_cod,lote,lote_cod,existencia_teorica')
+      .range(from, from + pageSize - 1)
+      .order('ubicacion_cod', {ascending:true});
+    if(error){ console.error(error); showToast('Error cargando artículos'); break; }
+    all = all.concat(data);
+    if(data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all.map(a => ({...a, zone: zoneOf(a.ubicacion_cod)}));
+}
+
+async function fetchAllConteos(){
+  let all = [];
+  let from = 0;
+  const pageSize = 1000;
+  while(true){
+    const {data, error} = await sb.from('inventario_conteos').select('*').range(from, from+pageSize-1);
+    if(error){ console.error(error); break; }
+    all = all.concat(data);
+    if(data.length < pageSize) break;
+    from += pageSize;
+  }
+  const map = new Map();
+  all.forEach(c => map.set(c.articulo_id, c));
+  return map;
+}
+
+async function fetchExtras(){
+  const {data, error} = await sb.from('inventario_extras').select('*').order('anadido_en', {ascending:false});
+  if(error){ console.error(error); return []; }
+  return data;
+}
+
+async function loadAll(){
+  document.getElementById('main').innerHTML = `<div class="empty-state">Cargando inventario…</div>`;
+  [articulos, conteos, extras] = await Promise.all([fetchAllArticulos(), fetchAllConteos(), fetchExtras()]);
+  render();
+}
+
+// ============================================================
+// REALTIME
+// ============================================================
+function subscribeRealtime(){
+  sb.channel('inv-conteos')
+    .on('postgres_changes', {event:'*', schema:'public', table:'inventario_conteos'}, payload => {
+      if(payload.eventType === 'DELETE'){
+        conteos.delete(payload.old.articulo_id);
+      } else {
+        conteos.set(payload.new.articulo_id, payload.new);
+        pushActivityFromConteo(payload.new);
+      }
+      render();
+    })
+    .subscribe();
+
+  sb.channel('inv-extras')
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'inventario_extras'}, payload => {
+      extras.unshift(payload.new);
+      pushActivityFromExtra(payload.new);
+      render();
+    })
+    .on('postgres_changes', {event:'DELETE', schema:'public', table:'inventario_extras'}, payload => {
+      extras = extras.filter(e => e.id !== payload.old.id);
+      render();
+    })
+    .subscribe();
+}
+
+function pushActivityFromConteo(c){
+  const art = articulos.find(a => a.id === c.articulo_id);
+  if(!art) return;
+  activity.unshift({
+    kind: c.estado,
+    text: `<b>${escapeHtml(c.contado_por || 'Alguien')}</b> marcó <span class="cod">${escapeHtml(art.ubicacion_cod)}</span> · ${escapeHtml(art.articulo || art.lote)} como ${labelEstado(c.estado)}`,
+    time: c.contado_en || new Date().toISOString()
+  });
+  activity = activity.slice(0, 200);
+}
+function pushActivityFromExtra(e){
+  activity.unshift({
+    kind: 'extra',
+    text: `<b>${escapeHtml(e.anadido_por || 'Alguien')}</b> añadió sobrante en <span class="cod">${escapeHtml(e.ubicacion_cod)}</span>: ${escapeHtml(e.descripcion)}`,
+    time: e.anadido_en || new Date().toISOString()
+  });
+  activity = activity.slice(0, 200);
+}
+function labelEstado(e){
+  return {ok:'OK', discrepancia:'cantidad distinta', no_encontrado:'no encontrado', pendiente:'pendiente'}[e] || e;
+}
+
+// ============================================================
+// ACCIONES
+// ============================================================
+async function marcar(articuloId, estado, cantidadReal){
+  const row = {
+    articulo_id: articuloId,
+    estado,
+    cantidad_real: cantidadReal ?? null,
+    contado_por: userName,
+    contado_en: new Date().toISOString()
+  };
+  conteos.set(articuloId, row); // optimista
+  expandedId = null; discInputId = null;
+  render();
+  const {error} = await sb.from('inventario_conteos').upsert(row, {onConflict:'articulo_id'});
+  if(error){ console.error(error); showToast('No se pudo guardar, revisa la conexión'); }
+}
+
+async function resetear(articuloId){
+  conteos.delete(articuloId);
+  render();
+  const {error} = await sb.from('inventario_conteos').delete().eq('articulo_id', articuloId);
+  if(error) console.error(error);
+}
+
+async function anadirExtra(ubicacionCod, descripcion, cantidad){
+  const row = {
+    ubicacion_cod: ubicacionCod,
+    descripcion,
+    cantidad: cantidad || null,
+    anadido_por: userName,
+    anadido_en: new Date().toISOString()
+  };
+  const {error} = await sb.from('inventario_extras').insert(row);
+  if(error){ console.error(error); showToast('No se pudo guardar el sobrante'); }
+  else showToast('Sobrante añadido');
+}
+
+// ============================================================
+// RENDER: helpers compartidos
+// ============================================================
+function groupByLocation(items){
+  const map = new Map();
+  items.forEach(it => {
+    if(!map.has(it.ubicacion_cod)) map.set(it.ubicacion_cod, []);
+    map.get(it.ubicacion_cod).push(it);
+  });
+  return map;
+}
+
+function renderItemCard(art){
+  const c = getConteo(art.id);
+  const isExpanded = expandedId === art.id;
+  const isDiscInput = discInputId === art.id;
+  let actionsHtml = '';
+  if(isDiscInput){
+    actionsHtml = `
+      <div class="qty-input-row">
+        <input type="number" inputmode="decimal" id="qtyinput-${art.id}" placeholder="Cantidad real" value="${art.existencia_teorica ?? ''}">
+        <button class="qty-save" onclick="submitCantidad(${art.id})">Guardar</button>
+        <button class="qty-cancel" onclick="cancelCantidad()">Cancelar</button>
+      </div>`;
+  } else if(isExpanded){
+    actionsHtml = `
+      <div class="item-actions">
+        <button class="act-btn ok-btn" onclick="marcar(${art.id},'ok',${art.existencia_teorica})">✓ Coincide</button>
+        <button class="act-btn disc-btn" onclick="openCantidad(${art.id})">✎ Cantidad</button>
+        <button class="act-btn miss-btn" onclick="marcar(${art.id},'no_encontrado',null)">✗ No está</button>
+        ${c.estado !== 'pendiente' ? `<button class="act-btn undo-btn" onclick="resetear(${art.id})">↺</button>` : ''}
+      </div>`;
+  }
+  const qtyLine = c.estado === 'ok' || c.estado === 'discrepancia'
+    ? `<div class="item-qty">real<br><b>${c.cantidad_real ?? '—'}</b></div>`
+    : `<div class="item-qty">esperado<br><b>${art.existencia_teorica}</b></div>`;
+
+  return `
+    <div class="item-card">
+      <div onclick="toggleExpand(${art.id})">
+        <div class="item-top">
+          <div>
+            <div class="item-name">${escapeHtml(art.articulo || '(sin descripción)')}</div>
+            <div class="item-meta">${escapeHtml(art.articulo_cod)} · lote ${escapeHtml(art.lote_cod)}${art.lote ? ' — ' + escapeHtml(art.lote) : ''}</div>
+          </div>
+          ${qtyLine}
+        </div>
+        <span class="badge ${c.estado}">${labelEstado(c.estado)}${c.contado_por ? ' · ' + escapeHtml(c.contado_por) : ''}</span>
+      </div>
+      ${actionsHtml}
+    </div>`;
+}
+
+function toggleExpand(id){
+  discInputId = null;
+  expandedId = expandedId === id ? null : id;
+  render();
+}
+function openCantidad(id){
+  discInputId = id;
+  render();
+  setTimeout(()=>{ const el = document.getElementById(`qtyinput-${id}`); if(el){ el.focus(); el.select(); } }, 30);
+}
+function cancelCantidad(){
+  discInputId = null;
+  render();
+}
+function submitCantidad(id){
+  const el = document.getElementById(`qtyinput-${id}`);
+  const val = parseFloat(el.value);
+  if(isNaN(val)){ showToast('Introduce una cantidad válida'); return; }
+  marcar(id, 'discrepancia', val);
+}
+
+function renderLocationGroups(items, opts){
+  opts = opts || {};
+  if(items.length === 0){
+    return `<div class="empty-state">Sin resultados.</div>`;
+  }
+  const groups = groupByLocation(items);
+  let html = '';
+  for(const [loc, arts] of groups){
+    html += `<div class="loc-group">
+      <div class="loc-head">
+        <span class="loc-code">${escapeHtml(loc)}</span>
+        <button class="loc-add" onclick="promptExtra('${escapeHtml(loc).replace(/'/g,"\\'")}')">+ sobrante</button>
+      </div>
+      ${arts.map(renderItemCard).join('')}
+    </div>`;
+  }
+  return html;
+}
+
+// ============================================================
+// RENDER: pestaña BUSCAR
+// ============================================================
+function renderBuscar(){
+  // Solo (re)construye el cuadro de búsqueda si no existe todavía —
+  // así no perdemos el foco/cursor cada vez que llega una actualización.
+  if(!document.getElementById('searchInput')){
+    document.getElementById('main').innerHTML = `
+      <div class="search-box">
+        <span>⌕</span>
+        <input id="searchInput" type="text" placeholder="Buscar ubicación, artículo, código, lote…" oninput="updateSearchResults()">
+      </div>
+      <div id="searchResults"></div>`;
+  }
+  updateSearchResults();
+}
+
+function updateSearchResults(){
+  const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
+  let body;
+  if(!q){
+    body = `<div class="empty-state">Escribe un código de ubicación, artículo o lote para empezar.</div>`;
+  } else {
+    const filtered = articulos.filter(a =>
+      (a.ubicacion_cod||'').toLowerCase().includes(q) ||
+      (a.articulo||'').toLowerCase().includes(q) ||
+      (a.articulo_cod||'').toLowerCase().includes(q) ||
+      (a.lote||'').toLowerCase().includes(q) ||
+      (a.lote_cod||'').toLowerCase().includes(q)
+    ).slice(0, 300);
+    body = renderLocationGroups(filtered);
+  }
+  document.getElementById('searchResults').innerHTML = body;
+}
+
+// ============================================================
+// RENDER: pestaña ZONAS
+// ============================================================
+function renderZonas(){
+  if(currentZone === null){
+    const zoneStats = new Map();
+    articulos.forEach(a => {
+      if(!zoneStats.has(a.zone)) zoneStats.set(a.zone, {total:0, pend:0});
+      const s = zoneStats.get(a.zone);
+      s.total++;
+      const c = getConteo(a.id);
+      if(c.estado === 'pendiente') s.pend++;
+    });
+    const zones = Array.from(zoneStats.keys()).sort();
+    const cards = zones.map(z => {
+      const s = zoneStats.get(z);
+      const done = s.pend === 0;
+      return `<div class="zone-card ${done?'done':''}" onclick="openZone('${z}')">
+        <div class="z-letter">${z}</div>
+        <div class="z-count">${s.total} items</div>
+        ${done ? `<div class="z-count">completado</div>` : `<div class="z-pend">${s.pend} pend.</div>`}
+      </div>`;
+    }).join('');
+    document.getElementById('main').innerHTML = `<div class="zone-grid">${cards}</div>`;
+  } else {
+    const items = articulos.filter(a => a.zone === currentZone);
+    document.getElementById('main').innerHTML = `
+      <div class="back-row" onclick="currentZone=null; render();">‹ Todas las zonas</div>
+      ${renderLocationGroups(items)}`;
+  }
+}
+function openZone(z){ currentZone = z; render(); }
+
+// ============================================================
+// RENDER: pestaña ACTIVIDAD
+// ============================================================
+function renderActividad(){
+  if(activity.length === 0){
+    document.getElementById('main').innerHTML = `<div class="empty-state">Todavía no hay actividad. En cuanto alguien marque un artículo aparecerá aquí en tiempo real.</div>`;
+    return;
+  }
+  const html = activity.map(a => `
+    <div class="feed-item">
+      <div class="feed-dot ${a.kind}"></div>
+      <div>
+        <div class="feed-text">${a.text}</div>
+        <div class="feed-time">${relTime(a.time)}</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('main').innerHTML = html;
+}
+
+// ============================================================
+// RENDER: pestaña RESUMEN
+// ============================================================
+function computeStats(){
+  let ok=0, disc=0, miss=0, pend=0;
+  articulos.forEach(a => {
+    const e = getConteo(a.id).estado;
+    if(e==='ok') ok++; else if(e==='discrepancia') disc++; else if(e==='no_encontrado') miss++; else pend++;
+  });
+  return {ok, disc, miss, pend, total: articulos.length};
+}
+
+function toCsvValue(v){
+  const s = String(v ?? '');
+  return '"' + s.replace(/"/g,'""') + '"';
+}
+
+function exportCsv(){
+  const rows = [['ubicacion','articulo','articulo_cod','lote','lote_cod','existencia_teorica','estado','cantidad_real','contado_por','contado_en']];
+  articulos.forEach(a => {
+    const c = getConteo(a.id);
+    if(c.estado === 'pendiente') return;
+    rows.push([a.ubicacion_cod, a.articulo, a.articulo_cod, a.lote, a.lote_cod, a.existencia_teorica, c.estado, c.cantidad_real, c.contado_por, c.contado_en]);
+  });
+  extras.forEach(e => {
+    rows.push([e.ubicacion_cod, e.descripcion, '', '', '', '', 'sobrante', e.cantidad, e.anadido_por, e.anadido_en]);
+  });
+  const csv = rows.map(r => r.map(toCsvValue).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `inventario_patio_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderResumen(){
+  const s = computeStats();
+  const discItems = articulos.filter(a => getConteo(a.id).estado === 'discrepancia');
+  const missItems = articulos.filter(a => getConteo(a.id).estado === 'no_encontrado');
+
+  let html = `
+    <div class="stat-grid">
+      <div class="stat-card ok"><div class="stat-num">${s.ok}</div><div class="stat-label">correctos</div></div>
+      <div class="stat-card discrepancia"><div class="stat-num">${s.disc}</div><div class="stat-label">cantidad distinta</div></div>
+      <div class="stat-card no_encontrado"><div class="stat-num">${s.miss}</div><div class="stat-label">no encontrados</div></div>
+      <div class="stat-card"><div class="stat-num">${s.pend}</div><div class="stat-label">pendientes</div></div>
+    </div>`;
+
+  if(discItems.length){
+    html += `<div class="section-title">Cantidad distinta (${discItems.length})</div>${renderLocationGroups(discItems)}`;
+  }
+  if(missItems.length){
+    html += `<div class="section-title">No encontrados (${missItems.length})</div>${renderLocationGroups(missItems)}`;
+  }
+  if(extras.length){
+    html += `<div class="section-title">Sobrantes encontrados (${extras.length})</div>`;
+    html += extras.map(e => `
+      <div class="item-card">
+        <div class="item-top">
+          <div>
+            <div class="item-name">${escapeHtml(e.descripcion)}</div>
+            <div class="item-meta">${escapeHtml(e.ubicacion_cod)} · ${escapeHtml(e.anadido_por||'')} · ${relTime(e.anadido_en)}</div>
+          </div>
+          <div class="item-qty"><b>${e.cantidad ?? '—'}</b></div>
+        </div>
+      </div>`).join('');
+  }
+
+  html += `<button class="export-btn" onclick="exportCsv()">Exportar informe CSV</button>`;
+  document.getElementById('main').innerHTML = html;
+}
+
+// ============================================================
+// MODAL: añadir sobrante
+// ============================================================
+function promptExtra(ubicacionCod){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+      <h3>Añadir sobrante en ${escapeHtml(ubicacionCod)}</h3>
+      <label>Qué has encontrado</label>
+      <input id="extraDesc" type="text" placeholder="Descripción del material">
+      <label>Cantidad (opcional)</label>
+      <input id="extraQty" type="number" inputmode="decimal" placeholder="Cantidad">
+      <div class="modal-actions">
+        <button class="modal-secondary" id="extraCancel">Cancelar</button>
+        <button class="modal-primary" id="extraSave">Añadir</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#extraCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#extraSave').onclick = () => {
+    const desc = overlay.querySelector('#extraDesc').value.trim();
+    const qty = parseFloat(overlay.querySelector('#extraQty').value);
+    if(!desc){ showToast('Describe el material encontrado'); return; }
+    anadirExtra(ubicacionCod, desc, isNaN(qty) ? null : qty);
+    overlay.remove();
+  };
+  setTimeout(()=>overlay.querySelector('#extraDesc').focus(), 30);
+}
+
+// ============================================================
+// MODAL: nombre de usuario
+// ============================================================
+function askUserName(forceShow){
+  if(userName && !forceShow) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+      <h3>¿Quién eres?</h3>
+      <label>Tu nombre (se verá en el registro de actividad)</label>
+      <input id="nameInput" type="text" placeholder="Nombre" value="${escapeHtml(userName)}">
+      <div class="modal-actions">
+        <button class="modal-primary" id="nameSave" style="flex:1">Continuar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const save = () => {
+    const val = overlay.querySelector('#nameInput').value.trim();
+    if(!val){ showToast('Escribe tu nombre'); return; }
+    userName = val;
+    localStorage.setItem('inv_user_name', val);
+    document.getElementById('userChipName').textContent = val;
+    overlay.remove();
+  };
+  overlay.querySelector('#nameSave').onclick = save;
+  overlay.querySelector('#nameInput').addEventListener('keydown', e => { if(e.key==='Enter') save(); });
+  setTimeout(()=>overlay.querySelector('#nameInput').focus(), 30);
+}
+
+// ============================================================
+// NAV + RENDER PRINCIPAL
+// ============================================================
+function updateProgress(){
+  const s = computeStats();
+  const done = s.ok + s.disc + s.miss;
+  const pct = s.total ? Math.round((done/s.total)*100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${done} / ${s.total} revisados`;
+  document.getElementById('progressPct').textContent = pct + '%';
+}
+
+function render(){
+  updateProgress();
+  if(currentTab === 'buscar') renderBuscar();
+  else if(currentTab === 'zonas') renderZonas();
+  else if(currentTab === 'actividad') renderActividad();
+  else if(currentTab === 'resumen') renderResumen();
+}
+
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTab = btn.dataset.tab;
+    if(currentTab !== 'zonas') currentZone = null;
+    expandedId = null; discInputId = null;
+    render();
+  });
+});
+
+document.getElementById('userChip').addEventListener('click', () => askUserName(true));
+
+// ============================================================
+// INIT
+// ============================================================
+(async function init(){
+  askUserName(false);
+  document.getElementById('userChipName').textContent = userName || 'tú';
+  await loadAll();
+  subscribeRealtime();
+})();
+</script>
+</body>
+</html>
