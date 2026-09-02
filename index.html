@@ -168,6 +168,15 @@
   .modal-sheet label{font-size:12.5px; color:var(--text-secondary); display:block; margin:12px 0 5px;}
   .modal-sheet input{width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-size:14.5px; outline:none;}
   .modal-actions{display:flex; gap:8px; margin-top:18px;}
+  .ref-results{max-height:160px; overflow-y:auto; margin-top:6px; border:1px solid var(--border); border-radius:8px;}
+  .ref-result{padding:9px 10px; border-bottom:1px solid var(--border); cursor:pointer;}
+  .ref-result:last-child{border-bottom:none;}
+  .ref-result:active{background:var(--surface-2);}
+  .ref-result-name{font-size:13px; color:var(--text);}
+  .ref-result-meta{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-secondary); margin-top:2px;}
+  .ref-empty{font-size:12px; color:var(--text-secondary); margin-top:6px;}
+  .ref-selected{font-size:12.5px; color:var(--success); margin-top:6px; padding:8px; background:var(--success-dim); border-radius:8px;}
+  .item-meta.ref-note{color:var(--alert); margin-top:3px;}
   .modal-actions button{flex:1; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:500; cursor:pointer;}
   .modal-primary{background:var(--accent); color:var(--on-accent);}
   .modal-secondary{background:var(--surface-2); color:var(--text-secondary); border:1px solid var(--border) !important;}
@@ -395,13 +404,14 @@ async function resetear(articuloId){
   if(error) console.error(error);
 }
 
-async function anadirExtra(ubicacionCod, descripcion, cantidad){
+async function anadirExtra(ubicacionCod, descripcion, cantidad, articuloIdRef){
   const row = {
     ubicacion_cod: ubicacionCod,
     descripcion,
     cantidad: cantidad || null,
     anadido_por: userName,
-    anadido_en: new Date().toISOString()
+    anadido_en: new Date().toISOString(),
+    articulo_id_ref: articuloIdRef || null
   };
   const {error} = await sb.from('inventario_extras').insert(row);
   if(error){ console.error(error); showToast('No se pudo guardar el sobrante'); }
@@ -516,12 +526,14 @@ function submitCantidad(id){
 }
 
 function renderExtraCard(e){
+  const ref = e.articulo_id_ref ? articulos.find(a => a.id === e.articulo_id_ref) : null;
   return `
     <div class="item-card extra-card">
       <div class="item-top">
         <div>
           <div class="item-name">${escapeHtml(e.descripcion)}</div>
           <div class="item-meta">añadido por ${escapeHtml(e.anadido_por || '—')} · ${relTime(e.anadido_en)}</div>
+          ${ref ? `<div class="item-meta ref-note">⚠ normalmente registrado en ${escapeHtml(ref.ubicacion_cod)}</div>` : ''}
         </div>
         <div class="item-qty"><b>${e.cantidad ?? '—'}</b></div>
       </div>
@@ -768,11 +780,15 @@ function renderResumen(){
 // MODAL: añadir sobrante
 // ============================================================
 function promptExtra(ubicacionCod){
+  let selectedRef = null;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal-sheet">
       <h3>Añadir sobrante en ${escapeHtml(ubicacionCod)}</h3>
+      <label>¿Es una referencia que ya tenemos? (opcional)</label>
+      <input id="refSearch" type="text" placeholder="Busca por artículo, código o lote…">
+      <div id="refResults"></div>
       <label>Qué has encontrado</label>
       <input id="extraDesc" type="text" placeholder="Descripción del material">
       <label>Cantidad (opcional)</label>
@@ -785,14 +801,48 @@ function promptExtra(ubicacionCod){
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
   overlay.querySelector('#extraCancel').onclick = () => overlay.remove();
+
+  const refSearchEl = overlay.querySelector('#refSearch');
+  const refResultsEl = overlay.querySelector('#refResults');
+  const descEl = overlay.querySelector('#extraDesc');
+
+  refSearchEl.addEventListener('input', () => {
+    selectedRef = null;
+    const q = refSearchEl.value.trim().toLowerCase();
+    if(q.length < 2){ refResultsEl.innerHTML = ''; return; }
+    const matches = articulos.filter(a =>
+      (a.articulo||'').toLowerCase().includes(q) ||
+      (a.articulo_cod||'').toLowerCase().includes(q) ||
+      (a.lote||'').toLowerCase().includes(q) ||
+      (a.lote_cod||'').toLowerCase().includes(q)
+    ).slice(0, 6);
+    refResultsEl.innerHTML = matches.length
+      ? `<div class="ref-results">${matches.map(a => `
+          <div class="ref-result" data-id="${a.id}">
+            <div class="ref-result-name">${escapeHtml(a.articulo || a.articulo_cod)}</div>
+            <div class="ref-result-meta">${escapeHtml(a.articulo_cod)} · normalmente en ${escapeHtml(a.ubicacion_cod)}</div>
+          </div>`).join('')}</div>`
+      : `<div class="ref-empty">Sin coincidencias — descríbelo abajo a mano.</div>`;
+    refResultsEl.querySelectorAll('.ref-result').forEach(el => {
+      el.addEventListener('click', () => {
+        const art = articulos.find(a => a.id === parseInt(el.dataset.id));
+        if(!art) return;
+        selectedRef = art;
+        descEl.value = art.articulo || art.articulo_cod;
+        refResultsEl.innerHTML = `<div class="ref-selected">✓ Vinculado a ${escapeHtml(art.articulo || art.articulo_cod)} (normalmente en ${escapeHtml(art.ubicacion_cod)})</div>`;
+        refSearchEl.value = '';
+      });
+    });
+  });
+
   overlay.querySelector('#extraSave').onclick = () => {
-    const desc = overlay.querySelector('#extraDesc').value.trim();
+    const desc = descEl.value.trim();
     const qty = parseFloat(overlay.querySelector('#extraQty').value);
     if(!desc){ showToast('Describe el material encontrado'); return; }
-    anadirExtra(ubicacionCod, desc, isNaN(qty) ? null : qty);
+    anadirExtra(ubicacionCod, desc, isNaN(qty) ? null : qty, selectedRef ? selectedRef.id : null);
     overlay.remove();
   };
-  setTimeout(()=>overlay.querySelector('#extraDesc').focus(), 30);
+  setTimeout(()=>refSearchEl.focus(), 30);
 }
 
 function promptNewUbicacion(prefill){
