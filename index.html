@@ -55,7 +55,7 @@
   input{font-family:inherit;}
 
   /* HEADER */
-  header{padding:14px 16px 10px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:20;}
+  header{padding:max(14px, env(safe-area-inset-top)) 16px 10px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:20;}
   .header-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
   .header-actions{display:flex; align-items:center; gap:8px;}
   .theme-toggle{width:32px; height:32px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center;}
