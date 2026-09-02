@@ -63,6 +63,11 @@
   .zone-card .z-pend{font-size:11px; color:var(--alert); margin-top:1px;}
   .zone-card.done{opacity:.55;}
 
+  .loc-list{display:flex; flex-direction:column; gap:6px;}
+  .loc-row{display:flex; justify-content:space-between; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; cursor:pointer;}
+  .loc-row.done{opacity:.55;}
+  .loc-row-count{font-size:12px; color:var(--text-secondary);}
+
   .back-row{display:flex; align-items:center; gap:8px; margin-bottom:14px; cursor:pointer; color:var(--accent); font-size:14px;}
 
   .loc-group{margin-bottom:18px;}
@@ -185,6 +190,7 @@ let extras = [];                 // material encontrado no listado
 let activity = [];               // feed de actividad en memoria
 let currentTab = 'buscar';
 let currentZone = null;
+let currentUbicacion = null;
 let showOtraLinea = false;
 let userName = localStorage.getItem('inv_user_name') || '';
 let expandedId = null;
@@ -523,14 +529,37 @@ function renderZonas(){
       </div>`;
     }).join('');
     document.getElementById('main').innerHTML = `<div class="zone-grid">${cards}</div>`;
-  } else {
+  } else if(currentUbicacion === null){
     const items = visibleArticulos().filter(a => a.zone === currentZone);
+    const locStats = new Map();
+    items.forEach(a => {
+      if(!locStats.has(a.ubicacion_cod)) locStats.set(a.ubicacion_cod, {total:0, pend:0});
+      const s = locStats.get(a.ubicacion_cod);
+      s.total++;
+      if(getConteo(a.id).estado === 'pendiente') s.pend++;
+    });
+    const locs = Array.from(locStats.keys()).sort();
+    const rows = locs.map(loc => {
+      const s = locStats.get(loc);
+      const done = s.pend === 0;
+      return `<div class="loc-row ${done?'done':''}" onclick="openUbicacion('${loc.replace(/'/g,"\\'")}')">
+        <span class="loc-code">${escapeHtml(loc)}</span>
+        <span class="loc-row-count">${s.total} items${done ? ' · completado' : ` · ${s.pend} pend.`}</span>
+      </div>`;
+    }).join('');
     document.getElementById('main').innerHTML = `
       <div class="back-row" onclick="currentZone=null; render();">‹ Todas las zonas</div>
+      <div class="loc-list">${rows}</div>`;
+  } else {
+    const items = visibleArticulos().filter(a => a.ubicacion_cod === currentUbicacion);
+    document.getElementById('main').innerHTML = `
+      <div class="back-row" onclick="currentUbicacion=null; render();">‹ Ubicaciones de zona ${escapeHtml(currentZone)}</div>
       ${renderLocationGroups(items)}`;
   }
 }
-function openZone(z){ currentZone = z; render(); }
+function openZone(z){ currentZone = z; currentUbicacion = null; render(); }
+function openUbicacion(loc){ currentUbicacion = loc; render(); }
+
 
 // ============================================================
 // RENDER: pestaña ACTIVIDAD
@@ -712,7 +741,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentTab = btn.dataset.tab;
-    if(currentTab !== 'zonas') currentZone = null;
+    if(currentTab !== 'zonas'){ currentZone = null; currentUbicacion = null; }
     expandedId = null; discInputId = null;
     render();
   });
@@ -722,6 +751,7 @@ document.getElementById('userChip').addEventListener('click', () => askUserName(
 document.getElementById('toggleOtraLinea').addEventListener('click', () => {
   showOtraLinea = !showOtraLinea;
   currentZone = null;
+  currentUbicacion = null;
   render();
 });
 
