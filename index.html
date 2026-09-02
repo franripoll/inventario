@@ -46,6 +46,8 @@
   .progress-track{height:6px; border-radius:4px; background:var(--surface-2); overflow:hidden;}
   .progress-fill{height:100%; background:var(--accent); border-radius:4px; transition:width .3s ease;}
   .progress-label{display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); margin-top:6px;}
+  .toggle-otra{display:block; width:100%; text-align:center; background:none; border:1px dashed var(--border); color:var(--text-secondary); font-size:12px; padding:6px; border-radius:8px; margin-top:10px; cursor:pointer;}
+  .toggle-otra:active{background:var(--surface-2);}
 
   /* MAIN */
   main{flex:1; padding:14px 16px 90px; overflow-y:auto;}
@@ -80,6 +82,7 @@
   .badge.ok{background:var(--success-dim); color:var(--success);}
   .badge.discrepancia{background:var(--alert-dim); color:var(--alert);}
   .badge.no_encontrado{background:var(--danger-dim); color:var(--danger);}
+  .badge.otra-linea-badge{background:var(--surface-2); color:var(--text-secondary); margin-left:6px;}
 
   .item-actions{display:flex; gap:6px; margin-top:10px;}
   .act-btn{flex:1; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:12.5px; padding:8px 4px; border-radius:8px; cursor:pointer; text-align:center;}
@@ -150,6 +153,7 @@
   </div>
   <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
   <div class="progress-label"><span id="progressText">0 / 0 revisados</span><span id="progressPct">0%</span></div>
+  <button id="toggleOtraLinea" class="toggle-otra">+ Ver otra línea cerámica</button>
 </header>
 
 <main id="main"></main>
@@ -181,6 +185,7 @@ let extras = [];                 // material encontrado no listado
 let activity = [];               // feed de actividad en memoria
 let currentTab = 'buscar';
 let currentZone = null;
+let showOtraLinea = false;
 let userName = localStorage.getItem('inv_user_name') || '';
 let expandedId = null;
 let discInputId = null;
@@ -196,6 +201,18 @@ function escapeHtml(s){
 function zoneOf(code){
   const m = String(code || '').match(/^[A-Za-z]+/);
   return m ? m[0].toUpperCase() : '???';
+}
+function visibleArticulos(){
+  return showOtraLinea ? articulos : articulos.filter(a => a.categoria === 'fachada');
+}
+function otraLineaCount(){
+  return articulos.filter(a => a.categoria === 'otra_linea').length;
+}
+function updateToggleLabel(){
+  const btn = document.getElementById('toggleOtraLinea');
+  if(!btn) return;
+  const n = otraLineaCount();
+  btn.textContent = showOtraLinea ? `- Ocultar otra línea cerámica (${n})` : `+ Ver otra línea cerámica (${n})`;
 }
 function getConteo(id){
   return conteos.get(id) || {estado:'pendiente', cantidad_real:null, contado_por:null, contado_en:null};
@@ -225,7 +242,7 @@ async function fetchAllArticulos(){
   const pageSize = 1000;
   while(true){
     const {data, error} = await sb.from('inventario_articulos')
-      .select('id,ubicacion_cod,articulo,articulo_cod,lote,lote_cod,existencia_teorica')
+      .select('id,ubicacion_cod,articulo,articulo_cod,lote,lote_cod,existencia_teorica,categoria')
       .range(from, from + pageSize - 1)
       .order('ubicacion_cod', {ascending:true});
     if(error){ console.error(error); showToast('Error cargando artículos'); break; }
@@ -401,6 +418,7 @@ function renderItemCard(art){
           ${qtyLine}
         </div>
         <span class="badge ${c.estado}">${labelEstado(c.estado)}${c.contado_por ? ' · ' + escapeHtml(c.contado_por) : ''}</span>
+        ${art.categoria === 'otra_linea' ? '<span class="badge otra-linea-badge">otra línea</span>' : ''}
       </div>
       ${actionsHtml}
     </div>`;
@@ -469,7 +487,7 @@ function updateSearchResults(){
   if(!q){
     body = `<div class="empty-state">Escribe un código de ubicación, artículo o lote para empezar.</div>`;
   } else {
-    const filtered = articulos.filter(a =>
+    const filtered = visibleArticulos().filter(a =>
       (a.ubicacion_cod||'').toLowerCase().includes(q) ||
       (a.articulo||'').toLowerCase().includes(q) ||
       (a.articulo_cod||'').toLowerCase().includes(q) ||
@@ -487,7 +505,7 @@ function updateSearchResults(){
 function renderZonas(){
   if(currentZone === null){
     const zoneStats = new Map();
-    articulos.forEach(a => {
+    visibleArticulos().forEach(a => {
       if(!zoneStats.has(a.zone)) zoneStats.set(a.zone, {total:0, pend:0});
       const s = zoneStats.get(a.zone);
       s.total++;
@@ -506,7 +524,7 @@ function renderZonas(){
     }).join('');
     document.getElementById('main').innerHTML = `<div class="zone-grid">${cards}</div>`;
   } else {
-    const items = articulos.filter(a => a.zone === currentZone);
+    const items = visibleArticulos().filter(a => a.zone === currentZone);
     document.getElementById('main').innerHTML = `
       <div class="back-row" onclick="currentZone=null; render();">‹ Todas las zonas</div>
       ${renderLocationGroups(items)}`;
@@ -538,11 +556,11 @@ function renderActividad(){
 // ============================================================
 function computeStats(){
   let ok=0, disc=0, miss=0, pend=0;
-  articulos.forEach(a => {
+  visibleArticulos().forEach(a => {
     const e = getConteo(a.id).estado;
     if(e==='ok') ok++; else if(e==='discrepancia') disc++; else if(e==='no_encontrado') miss++; else pend++;
   });
-  return {ok, disc, miss, pend, total: articulos.length};
+  return {ok, disc, miss, pend, total: visibleArticulos().length};
 }
 
 function toCsvValue(v){
@@ -572,8 +590,8 @@ function exportCsv(){
 
 function renderResumen(){
   const s = computeStats();
-  const discItems = articulos.filter(a => getConteo(a.id).estado === 'discrepancia');
-  const missItems = articulos.filter(a => getConteo(a.id).estado === 'no_encontrado');
+  const discItems = visibleArticulos().filter(a => getConteo(a.id).estado === 'discrepancia');
+  const missItems = visibleArticulos().filter(a => getConteo(a.id).estado === 'no_encontrado');
 
   let html = `
     <div class="stat-grid">
@@ -682,6 +700,7 @@ function updateProgress(){
 
 function render(){
   updateProgress();
+  updateToggleLabel();
   if(currentTab === 'buscar') renderBuscar();
   else if(currentTab === 'zonas') renderZonas();
   else if(currentTab === 'actividad') renderActividad();
@@ -700,6 +719,11 @@ document.querySelectorAll('nav button').forEach(btn => {
 });
 
 document.getElementById('userChip').addEventListener('click', () => askUserName(true));
+document.getElementById('toggleOtraLinea').addEventListener('click', () => {
+  showOtraLinea = !showOtraLinea;
+  currentZone = null;
+  render();
+});
 
 // ============================================================
 // INIT
