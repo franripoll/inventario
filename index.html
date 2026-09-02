@@ -101,6 +101,7 @@
   .item-meta{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text-secondary); margin-top:4px; line-height:1.5;}
   .item-qty{font-size:13px; color:var(--text-secondary); white-space:nowrap; text-align:right;}
   .item-qty b{color:var(--text); font-size:15px;}
+  .qty-sub{font-size:10.5px; color:var(--text-secondary); margin-top:1px;}
 
   .badge{display:inline-block; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:500; margin-top:8px;}
   .badge.pendiente{background:var(--surface-2); color:var(--text-secondary);}
@@ -116,7 +117,11 @@
   .act-btn.miss-btn:active{background:var(--danger-dim); border-color:var(--danger);}
   .act-btn.undo-btn{flex:0 0 40px; color:var(--text-secondary);}
 
-  .qty-input-row{display:flex; gap:6px; margin-top:10px;}
+  .qty-block{margin-top:10px;}
+  .qty-input-row{display:flex; gap:6px; margin-top:6px;}
+  .unit-toggle{display:flex; gap:6px;}
+  .unit-toggle button{flex:1; padding:7px; border-radius:7px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-secondary); font-size:12px; cursor:pointer;}
+  .unit-toggle button.active{background:var(--accent-dim); color:var(--accent); border-color:var(--accent);}
   .qty-input-row input{flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-size:14px; outline:none;}
   .qty-input-row button{border:none; border-radius:8px; padding:0 14px; font-size:13px; font-weight:500; cursor:pointer;}
   .qty-save{background:var(--accent); color:var(--on-accent);}
@@ -221,6 +226,7 @@ let userName = localStorage.getItem('inv_user_name') || '';
 let theme = localStorage.getItem('inv_theme') || 'light';
 let expandedId = null;
 let discInputId = null;
+let qtyUnit = 'piezas'; // unidad activa en el input de "cantidad distinta": 'piezas' o 'm2'
 
 const ESTADOS = ['pendiente','ok','discrepancia','no_encontrado'];
 
@@ -274,7 +280,7 @@ async function fetchAllArticulos(){
   const pageSize = 1000;
   while(true){
     const {data, error} = await sb.from('inventario_articulos')
-      .select('id,ubicacion_cod,articulo,articulo_cod,lote,lote_cod,existencia_teorica,categoria')
+      .select('id,ubicacion_cod,articulo,articulo_cod,lote,lote_cod,existencia_teorica,categoria,area_pieza_m2')
       .range(from, from + pageSize - 1)
       .order('ubicacion_cod', {ascending:true});
     if(error){ console.error(error); showToast('Error cargando artículos'); break; }
@@ -414,17 +420,36 @@ function groupByLocation(items){
   return map;
 }
 
+function formatQtyBox(m2, art, label){
+  if(art.area_pieza_m2){
+    const piezas = Math.round((m2 / art.area_pieza_m2) * 10) / 10;
+    return `<div class="item-qty">${label}<br><b>${piezas}</b> pz<div class="qty-sub">${m2} m²</div></div>`;
+  }
+  return `<div class="item-qty">${label}<br><b>${m2}</b></div>`;
+}
+
 function renderItemCard(art){
   const c = getConteo(art.id);
   const isExpanded = expandedId === art.id;
   const isDiscInput = discInputId === art.id;
   let actionsHtml = '';
   if(isDiscInput){
+    const hasPiezas = !!art.area_pieza_m2;
+    const unit = hasPiezas ? qtyUnit : 'm2';
+    const baseM2 = art.existencia_teorica ?? 0;
+    const prefillVal = (unit === 'piezas') ? Math.round((baseM2 / art.area_pieza_m2) * 10) / 10 : baseM2;
     actionsHtml = `
-      <div class="qty-input-row">
-        <input type="number" inputmode="decimal" id="qtyinput-${art.id}" placeholder="Cantidad real" value="${art.existencia_teorica ?? ''}">
-        <button class="qty-save" onclick="submitCantidad(${art.id})">Guardar</button>
-        <button class="qty-cancel" onclick="cancelCantidad()">Cancelar</button>
+      <div class="qty-block">
+        ${hasPiezas ? `
+          <div class="unit-toggle">
+            <button class="${unit==='piezas'?'active':''}" onclick="setQtyUnit(${art.id},'piezas')">piezas</button>
+            <button class="${unit==='m2'?'active':''}" onclick="setQtyUnit(${art.id},'m2')">m²</button>
+          </div>` : ''}
+        <div class="qty-input-row">
+          <input type="number" inputmode="decimal" id="qtyinput-${art.id}" placeholder="Cantidad real${unit==='piezas'?' (piezas)':' (m²)'}" value="${prefillVal}">
+          <button class="qty-save" onclick="submitCantidad(${art.id})">Guardar</button>
+          <button class="qty-cancel" onclick="cancelCantidad()">Cancelar</button>
+        </div>
       </div>`;
   } else if(isExpanded){
     actionsHtml = `
@@ -436,8 +461,8 @@ function renderItemCard(art){
       </div>`;
   }
   const qtyLine = c.estado === 'ok' || c.estado === 'discrepancia'
-    ? `<div class="item-qty">real<br><b>${c.cantidad_real ?? '—'}</b></div>`
-    : `<div class="item-qty">esperado<br><b>${art.existencia_teorica}</b></div>`;
+    ? formatQtyBox(c.cantidad_real, art, 'real')
+    : formatQtyBox(art.existencia_teorica, art, 'esperado');
 
   return `
     <div class="item-card">
@@ -463,18 +488,31 @@ function toggleExpand(id){
 }
 function openCantidad(id){
   discInputId = id;
+  const art = articulos.find(a => a.id === id);
+  qtyUnit = (art && art.area_pieza_m2) ? 'piezas' : 'm2';
   render();
   setTimeout(()=>{ const el = document.getElementById(`qtyinput-${id}`); if(el){ el.focus(); el.select(); } }, 30);
 }
+function setQtyUnit(id, unit){
+  qtyUnit = unit;
+  render();
+  setTimeout(()=>{ const el = document.getElementById(`qtyinput-${id}`); if(el){ el.focus(); } }, 30);
+}
 function cancelCantidad(){
   discInputId = null;
+  qtyUnit = 'piezas';
   render();
 }
 function submitCantidad(id){
   const el = document.getElementById(`qtyinput-${id}`);
   const val = parseFloat(el.value);
   if(isNaN(val)){ showToast('Introduce una cantidad válida'); return; }
-  marcar(id, 'discrepancia', val);
+  const art = articulos.find(a => a.id === id);
+  const m2 = (qtyUnit === 'piezas' && art && art.area_pieza_m2)
+    ? Math.round(val * art.area_pieza_m2 * 100) / 100
+    : val;
+  marcar(id, 'discrepancia', m2);
+
 }
 
 function renderExtraCard(e){
