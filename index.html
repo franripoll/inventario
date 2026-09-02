@@ -147,6 +147,8 @@
 
   .section-title{font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin:22px 0 10px; font-weight:600;}
   .export-btn{display:block; width:100%; background:var(--accent); color:var(--on-accent); border:none; border-radius:var(--radius); padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; margin-top:20px;}
+  .loc-add-new{display:block; width:100%; text-align:center; background:none; border:1px dashed var(--border); color:var(--accent); font-size:13px; font-weight:500; padding:12px; border-radius:var(--radius); margin-top:14px; cursor:pointer;}
+  .item-card.extra-card{border-style:dashed;}
 
   /* NAV */
   nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--surface); border-top:1px solid var(--border); z-index:20; padding-bottom:max(14px, env(safe-area-inset-bottom));}
@@ -475,20 +477,40 @@ function submitCantidad(id){
   marcar(id, 'discrepancia', val);
 }
 
-function renderLocationGroups(items, opts){
-  opts = opts || {};
-  if(items.length === 0){
+function renderExtraCard(e){
+  return `
+    <div class="item-card extra-card">
+      <div class="item-top">
+        <div>
+          <div class="item-name">${escapeHtml(e.descripcion)}</div>
+          <div class="item-meta">añadido por ${escapeHtml(e.anadido_por || '—')} · ${relTime(e.anadido_en)}</div>
+        </div>
+        <div class="item-qty"><b>${e.cantidad ?? '—'}</b></div>
+      </div>
+      <span class="badge otra-linea-badge">sobrante añadido</span>
+    </div>`;
+}
+
+function renderLocationGroups(items, extraItems){
+  extraItems = extraItems || [];
+  if(items.length === 0 && extraItems.length === 0){
     return `<div class="empty-state">Sin resultados.</div>`;
   }
   const groups = groupByLocation(items);
+  const extraGroups = groupByLocation(extraItems);
+  const allLocs = new Set([...groups.keys(), ...extraGroups.keys()]);
+  const sortedLocs = Array.from(allLocs).sort();
   let html = '';
-  for(const [loc, arts] of groups){
+  for(const loc of sortedLocs){
+    const arts = groups.get(loc) || [];
+    const exs = extraGroups.get(loc) || [];
     html += `<div class="loc-group">
       <div class="loc-head">
         <span class="loc-code">${escapeHtml(loc)}</span>
         <button class="loc-add" onclick="promptExtra('${escapeHtml(loc).replace(/'/g,"\\'")}')">+ sobrante</button>
       </div>
       ${arts.map(renderItemCard).join('')}
+      ${exs.map(renderExtraCard).join('')}
     </div>`;
   }
   return html;
@@ -512,7 +534,8 @@ function renderBuscar(){
 }
 
 function updateSearchResults(){
-  const q = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
+  const rawQ = (document.getElementById('searchInput')?.value || '').trim();
+  const q = rawQ.toLowerCase();
   let body;
   if(!q){
     body = `<div class="empty-state">Escribe un código de ubicación, artículo o lote para empezar.</div>`;
@@ -524,7 +547,19 @@ function updateSearchResults(){
       (a.lote||'').toLowerCase().includes(q) ||
       (a.lote_cod||'').toLowerCase().includes(q)
     ).slice(0, 300);
-    body = renderLocationGroups(filtered);
+    const filteredExtras = extras.filter(e =>
+      (e.ubicacion_cod||'').toLowerCase().includes(q) ||
+      (e.descripcion||'').toLowerCase().includes(q)
+    );
+    if(filtered.length === 0 && filteredExtras.length === 0){
+      const codGuess = rawQ.toUpperCase().replace(/\s+/g,'');
+      body = `<div class="empty-state">
+        No hay nada registrado para "${escapeHtml(rawQ)}".<br>Puede que sea una ubicación que aún no está en el sistema.
+        <button class="loc-add-new" onclick="promptNewUbicacion('${escapeHtml(codGuess).replace(/'/g,"\\'")}')">+ Añadir ubicación / material aquí</button>
+      </div>`;
+    } else {
+      body = renderLocationGroups(filtered, filteredExtras);
+    }
   }
   document.getElementById('searchResults').innerHTML = body;
 }
@@ -542,19 +577,24 @@ function renderZonas(){
       const c = getConteo(a.id);
       if(c.estado === 'pendiente') s.pend++;
     });
+    extras.forEach(e => {
+      const z = zoneOf(e.ubicacion_cod);
+      if(!zoneStats.has(z)) zoneStats.set(z, {total:0, pend:0});
+    });
     const zones = Array.from(zoneStats.keys()).sort();
     const cards = zones.map(z => {
       const s = zoneStats.get(z);
-      const done = s.pend === 0;
+      const done = s.total > 0 && s.pend === 0;
       return `<div class="zone-card ${done?'done':''}" onclick="openZone('${z}')">
         <div class="z-letter">${z}</div>
         <div class="z-count">${s.total} items</div>
-        ${done ? `<div class="z-count">completado</div>` : `<div class="z-pend">${s.pend} pend.</div>`}
+        ${done ? `<div class="z-count">completado</div>` : (s.total > 0 ? `<div class="z-pend">${s.pend} pend.</div>` : `<div class="z-count">solo sobrantes</div>`)}
       </div>`;
     }).join('');
     document.getElementById('main').innerHTML = `<div class="zone-grid">${cards}</div>`;
   } else if(currentUbicacion === null){
     const items = visibleArticulos().filter(a => a.zone === currentZone);
+    const zoneExtras = extras.filter(e => zoneOf(e.ubicacion_cod) === currentZone);
     const locStats = new Map();
     items.forEach(a => {
       if(!locStats.has(a.ubicacion_cod)) locStats.set(a.ubicacion_cod, {total:0, pend:0});
@@ -562,23 +602,31 @@ function renderZonas(){
       s.total++;
       if(getConteo(a.id).estado === 'pendiente') s.pend++;
     });
+    zoneExtras.forEach(e => {
+      if(!locStats.has(e.ubicacion_cod)) locStats.set(e.ubicacion_cod, {total:0, pend:0});
+    });
     const locs = Array.from(locStats.keys()).sort();
     const rows = locs.map(loc => {
       const s = locStats.get(loc);
-      const done = s.pend === 0;
+      const done = s.total > 0 && s.pend === 0;
+      const label = s.total > 0
+        ? `${s.total} items${done ? ' · completado' : ` · ${s.pend} pend.`}`
+        : 'solo sobrantes añadidos';
       return `<div class="loc-row ${done?'done':''}" onclick="openUbicacion('${loc.replace(/'/g,"\\'")}')">
         <span class="loc-code">${escapeHtml(loc)}</span>
-        <span class="loc-row-count">${s.total} items${done ? ' · completado' : ` · ${s.pend} pend.`}</span>
+        <span class="loc-row-count">${label}</span>
       </div>`;
     }).join('');
     document.getElementById('main').innerHTML = `
       <div class="back-row" onclick="currentZone=null; render();">‹ Todas las zonas</div>
-      <div class="loc-list">${rows}</div>`;
+      <div class="loc-list">${rows}</div>
+      <button class="loc-add-new" onclick="promptNewUbicacion('${escapeHtml(currentZone)}')">+ Nueva ubicación en zona ${escapeHtml(currentZone)}</button>`;
   } else {
     const items = visibleArticulos().filter(a => a.ubicacion_cod === currentUbicacion);
+    const locExtras = extras.filter(e => e.ubicacion_cod === currentUbicacion);
     document.getElementById('main').innerHTML = `
       <div class="back-row" onclick="currentUbicacion=null; render();">‹ Ubicaciones de zona ${escapeHtml(currentZone)}</div>
-      ${renderLocationGroups(items)}`;
+      ${renderLocationGroups(items, locExtras)}`;
   }
 }
 function openZone(z){ currentZone = z; currentUbicacion = null; render(); }
@@ -707,6 +755,43 @@ function promptExtra(ubicacionCod){
     overlay.remove();
   };
   setTimeout(()=>overlay.querySelector('#extraDesc').focus(), 30);
+}
+
+function promptNewUbicacion(prefill){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+      <h3>Añadir ubicación nueva</h3>
+      <label>Código de ubicación</label>
+      <input id="newLocCode" type="text" placeholder="Ej. K130" value="${escapeHtml(prefill || '')}">
+      <label>Qué has encontrado</label>
+      <input id="extraDesc" type="text" placeholder="Descripción del material">
+      <label>Cantidad (opcional)</label>
+      <input id="extraQty" type="number" inputmode="decimal" placeholder="Cantidad">
+      <div class="modal-actions">
+        <button class="modal-secondary" id="extraCancel">Cancelar</button>
+        <button class="modal-primary" id="extraSave">Añadir</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#extraCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#extraSave').onclick = () => {
+    const loc = overlay.querySelector('#newLocCode').value.trim().toUpperCase();
+    const desc = overlay.querySelector('#extraDesc').value.trim();
+    const qty = parseFloat(overlay.querySelector('#extraQty').value);
+    if(!loc){ showToast('Escribe el código de ubicación'); return; }
+    if(!desc){ showToast('Describe el material encontrado'); return; }
+    anadirExtra(loc, desc, isNaN(qty) ? null : qty);
+    overlay.remove();
+    if(currentTab === 'zonas'){ currentZone = zoneOf(loc); currentUbicacion = loc; render(); }
+  };
+  const codeInput = overlay.querySelector('#newLocCode');
+  setTimeout(()=>{
+    if(prefill && overlay.querySelector('#extraDesc')) overlay.querySelector('#extraDesc').focus();
+    else codeInput.focus();
+  }, 30);
 }
 
 // ============================================================
