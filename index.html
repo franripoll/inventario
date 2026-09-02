@@ -19,6 +19,7 @@
     --border:#21262D;
     --accent:#58A6FF;
     --accent-dim:#1F3A5C;
+    --on-accent:#0B1420;
     --alert:#F0883E;
     --alert-dim:#4A2E17;
     --danger:#F85149;
@@ -28,6 +29,23 @@
     --text:#CDD9E5;
     --text-secondary:#8B949E;
     --radius:10px;
+  }
+  :root[data-theme="light"]{
+    --bg:#F3F4F6;
+    --surface:#FFFFFF;
+    --surface-2:#EBEDF0;
+    --border:#D7DBE0;
+    --accent:#0B63C5;
+    --accent-dim:#DCEAFB;
+    --on-accent:#FFFFFF;
+    --alert:#B85C00;
+    --alert-dim:#FBEAD6;
+    --danger:#C0392B;
+    --danger-dim:#FAE1DE;
+    --success:#1E8E3E;
+    --success-dim:#E1F3E5;
+    --text:#1B222B;
+    --text-secondary:#5B6572;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; padding:0; background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,sans-serif; height:100%; overscroll-behavior-y:none;}
@@ -39,6 +57,8 @@
   /* HEADER */
   header{padding:14px 16px 10px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:20;}
   .header-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .header-actions{display:flex; align-items:center; gap:8px;}
+  .theme-toggle{width:32px; height:32px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center;}
   .app-title{font-size:16px; font-weight:600; letter-spacing:-.01em;}
   .app-title span{color:var(--text-secondary); font-weight:400;}
   .user-chip{display:flex; align-items:center; gap:6px; background:var(--surface-2); border:1px solid var(--border); border-radius:20px; padding:5px 10px 5px 8px; font-size:13px; color:var(--text); cursor:pointer;}
@@ -99,7 +119,7 @@
   .qty-input-row{display:flex; gap:6px; margin-top:10px;}
   .qty-input-row input{flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-size:14px; outline:none;}
   .qty-input-row button{border:none; border-radius:8px; padding:0 14px; font-size:13px; font-weight:500; cursor:pointer;}
-  .qty-save{background:var(--accent); color:#0B1420;}
+  .qty-save{background:var(--accent); color:var(--on-accent);}
   .qty-cancel{background:var(--surface-2); color:var(--text-secondary); border:1px solid var(--border) !important;}
 
   .empty-state{text-align:center; color:var(--text-secondary); font-size:13.5px; padding:40px 20px; line-height:1.6;}
@@ -126,7 +146,7 @@
   .stat-card.no_encontrado .stat-num{color:var(--danger);}
 
   .section-title{font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin:22px 0 10px; font-weight:600;}
-  .export-btn{display:block; width:100%; background:var(--accent); color:#0B1420; border:none; border-radius:var(--radius); padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; margin-top:20px;}
+  .export-btn{display:block; width:100%; background:var(--accent); color:var(--on-accent); border:none; border-radius:var(--radius); padding:13px; font-size:14.5px; font-weight:600; cursor:pointer; margin-top:20px;}
 
   /* NAV */
   nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--surface); border-top:1px solid var(--border); z-index:20; padding-bottom:env(safe-area-inset-bottom);}
@@ -142,7 +162,7 @@
   .modal-sheet input{width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-size:14.5px; outline:none;}
   .modal-actions{display:flex; gap:8px; margin-top:18px;}
   .modal-actions button{flex:1; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:500; cursor:pointer;}
-  .modal-primary{background:var(--accent); color:#0B1420;}
+  .modal-primary{background:var(--accent); color:var(--on-accent);}
   .modal-secondary{background:var(--surface-2); color:var(--text-secondary); border:1px solid var(--border) !important;}
 
   .toast{position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:13px; padding:10px 16px; border-radius:20px; z-index:200; opacity:0; transition:opacity .25s;}
@@ -154,7 +174,10 @@
 <header>
   <div class="header-row">
     <div class="app-title">Inventario <span>· Patio Cerámica Mayor</span></div>
-    <div class="user-chip" id="userChip"><span class="user-dot"></span><span id="userChipName">—</span></div>
+    <div class="header-actions">
+      <button class="theme-toggle" id="themeToggle" aria-label="Cambiar tema">☀</button>
+      <div class="user-chip" id="userChip"><span class="user-dot"></span><span id="userChipName">—</span></div>
+    </div>
   </div>
   <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
   <div class="progress-label"><span id="progressText">0 / 0 revisados</span><span id="progressPct">0%</span></div>
@@ -193,6 +216,7 @@ let currentZone = null;
 let currentUbicacion = null;
 let showOtraLinea = false;
 let userName = localStorage.getItem('inv_user_name') || '';
+let theme = localStorage.getItem('inv_theme') || 'light';
 let expandedId = null;
 let discInputId = null;
 
@@ -757,8 +781,21 @@ document.getElementById('toggleOtraLinea').addEventListener('click', () => {
 
 // ============================================================
 // INIT
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeToggle').textContent = theme === 'light' ? '☾' : '☀';
+}
+document.getElementById('themeToggle').addEventListener('click', () => {
+  theme = theme === 'light' ? 'dark' : 'light';
+  localStorage.setItem('inv_theme', theme);
+  applyTheme();
+});
+
+// ============================================================
+// INIT
 // ============================================================
 (async function init(){
+  applyTheme();
   askUserName(false);
   document.getElementById('userChipName').textContent = userName || 'tú';
   await loadAll();
